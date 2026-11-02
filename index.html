@@ -1,0 +1,218 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Talabat Mart Alexandria - Zone Redesign (road network)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+<script>
+// Real orders (85,657 orders, 7 days, 26 Oct-1 Nov 2026, from the "CUST.csv / Sheet3" order sheet) aggregated on the 300 m grid.
+// format: "r,c,orders;..."  where lat=31.155+r*0.0027, lng=29.865+c*0.00315
+const CELLS_DAYS=7;
+// DT / P(DT<=15) by real Google road km, 0.5 km buckets (0-0.5, 0.5-1, ... >=10), made monotone
+const DT_MEAN=[10.1,11.6,12.6,13.9,15.8,17.5,18.1,18.6,18.6,18.6,22.2,23.4,24.5,26.2,27.6,27.6,28.4,29,29.8,30.2,33.1];
+const DT_P15=[0.83,0.79,0.76,0.68,0.57,0.47,0.41,0.39,0.39,0.39,0.21,0.17,0.11,0.09,0.03,0.03,0.03,0.02,0.01,0,0];
+const CELLS="33,40,354;38,39,282;49,54,92;29,30,456;33,35,388;33,45,50;34,34,479;17,18,623;33,33,388;45,46,296;7,21,7;31,33,289;29,29,320;20,27,341;15,9,29;40,42,269;19,13,392;15,11,48;25,23,272;44,44,359;30,39,21;10,14,32;37,36,434;50,54,75;30,33,155;23,20,600;42,41,335;39,43,136;25,22,607;26,29,219;19,23,165;14,12,23;19,17,2;22,20,439;33,34,454;25,28,335;14,11,40;18,14,296;21,21,520;42,42,540;15,17,146;30,29,304;26,30,268;22,24,560;34,33,304;36,36,308;28,28,563;13,12,35;31,43,49;42,40,186;42,43,411;13,14,94;28,29,520;15,16,135;17,29,461;20,5,94;15,14,83;14,18,160;14,16,118;48,51,4;14,15,166;12,18,61;21,5,7;12,15,114;20,21,469;25,24,269;37,42,178;37,40,82;17,5,65;34,35,528;35,34,438;24,27,50;27,33,50;21,29,142;11,12,39;37,48,84;13,15,140;17,21,105;12,19,245;17,30,186;33,32,460;15,8,74;41,40,401;19,33,15;34,40,145;30,30,351;22,25,471;9,14,16;23,26,187;34,36,292;18,4,85;45,45,361;21,23,263;28,26,203;13,7,60;13,16,150;23,21,210;9,9,12;14,17,172;23,29,280;35,33,258;9,12,17;24,23,381;21,26,169;20,25,102;36,35,319;32,32,420;16,8,48;20,19,562;21,27,279;16,11,77;35,35,253;16,19,42;24,30,156;19,4,20;16,20,703;16,14,245;13,17,122;17,12,99;12,16,85;29,27,300;6,20,28;32,33,519;14,14,159;39,41,157;6,17,1;41,42,369;12,12,56;15,21,88;30,34,57;22,23,317;12,11,38;23,23,244;38,36,163;17,20,366;21,30,138;19,22,286;19,14,318;34,32,182;6,19,36;24,24,231;42,44,191;13,20,77;14,19,112;38,40,166;16,21,143;39,42,137;17,10,50;13,18,113;11,19,60;12,17,111;18,32,89;18,24,44;16,5,13;10,12,25;50,52,34;7,9,2;18,15,177;34,41,216;18,5,65;18,3,51;16,17,310;39,49,82;15,6,34;14,8,59;21,22,184;31,35,36;22,21,26;20,26,106;10,9,10;40,50,28;18,6,108;24,22,491;40,39,483;28,35,34;24,21,359;19,20,249;27,35,32;14,6,17;11,15,54;22,17,162;32,41,106;32,40,110;30,28,285;23,27,93;23,28,157;17,23,17;23,30,454;14,7,63;18,38,224;31,34,120;15,15,153;13,11,59;20,22,570;17,11,63;27,26,264;16,6,81;9,8,14;40,45,63;37,50,70;26,26,230;21,16,103;38,49,35;18,13,269;36,44,184;25,29,199;38,42,133;21,33,125;17,22,67;12,13,48;10,11,20;11,8,2;16,22,55;16,18,242;50,55,3;27,31,63;21,18,761;19,5,119;37,46,2;29,25,5;13,13,41;34,37,208;10,13,48;15,20,35;9,10,14;26,23,408;16,15,168;6,21,11;15,18,56;20,23,331;23,25,437;41,44,134;10,10,11;46,46,303;32,30,134;22,26,148;16,13,130;12,9,29;26,37,13;11,18,11;21,28,271;29,26,125;41,43,424;11,7,8;26,24,75;23,31,394;12,7,28;42,39,144;12,14,68;18,31,282;27,29,673;18,39,4;28,33,43;49,52,142;30,37,27;31,32,201;15,10,56;21,24,468;36,41,56;22,31,51;10,7,4;17,6,57;23,24,222;37,37,334;21,25,313;20,30,533;41,41,534;36,37,222;18,22,18;5,19,14;25,25,288;17,24,5;17,14,220;40,51,15;36,34,192;7,10,7;35,40,69;19,25,92;21,19,686;19,6,48;31,39,76;20,20,497;40,43,142;18,34,199;40,44,81;8,9,6;31,42,127;28,30,372;38,43,81;18,23,30;32,35,105;15,22,61;17,17,54;25,26,267;12,8,11;32,34,273;37,38,216;13,10,66;11,6,2;14,10,84;33,41,171;14,13,39;29,38,8;16,10,34;8,11,19;20,33,2;26,28,397;30,40,79;31,30,371;24,20,136;22,27,83;20,29,130;44,45,270;7,11,6;31,31,374;17,13,72;22,33,199;17,4,16;17,7,83;5,20,13;10,6,11;11,14,19;14,20,43;25,36,41;13,19,34;21,31,311;7,15,1;16,12,101;21,17,409;14,23,3;17,28,390;9,13,12;27,27,281;39,39,373;30,36,9;14,21,43;23,19,440;27,34,82;20,24,136;11,11,15;15,7,31;16,7,46;22,19,739;32,31,217;27,30,641;10,15,13;24,25,162;14,22,20;50,53,52;9,11,27;18,29,187;17,15,302;37,49,59;34,39,129;16,9,19;40,46,71;35,44,100;22,18,658;37,41,131;19,31,172;18,36,188;15,13,115;20,32,777;26,22,90;32,29,208;40,40,242;39,38,344;15,19,32;29,41,73;28,24,7;25,27,385;48,52,138;33,31,49;36,49,48;8,10,1;31,29,498;42,51,130;32,44,41;31,41,157;50,51,33;20,18,100;19,21,126;43,52,73;49,55,31;28,25,87;17,38,5;43,45,93;28,27,428;26,34,76;14,9,50;43,44,427;17,3,6;20,16,134;29,33,46;41,45,118;44,50,17;20,15,90;26,27,309;38,37,261;18,12,25;28,37,4;12,10,8;8,12,2;11,9,4;37,35,93;18,18,4;43,43,322;22,28,107;29,36,9;25,34,107;48,54,28;17,8,36;39,40,201;44,46,96;37,43,88;13,8,34;28,36,14;20,13,12;18,7,27;35,42,59;17,19,89;39,47,57;33,37,83;21,32,322;47,47,57;20,28,273;6,18,1;18,21,29;32,43,36;29,28,397;30,41,78;17,39,5;25,30,97;36,39,50;41,39,166;37,44,78;11,13,17;31,40,161;25,32,24;38,41,137;17,37,104;39,37,153;43,46,55;21,4,6;33,42,133;22,32,330;28,34,30;19,36,96;33,30,1;29,31,283;37,39,108;21,20,609;49,53,84;27,36,23;16,28,80;33,38,64;19,24,110;47,50,466;40,41,354;4,21,1;13,9,27;35,37,93;27,28,366;33,29,1;30,32,113;9,15,1;18,20,11;43,42,135;26,35,28;20,14,19;19,29,4;45,48,46;24,37,5;39,44,135;43,41,122;47,46,49;24,36,24;27,25,161;27,32,20;30,27,134;24,33,54;39,46,84;18,27,9;27,23,25;19,19,39;25,21,47;39,45,57;20,31,292;46,47,171;20,6,8;44,43,111;36,45,74;24,32,19;40,48,65;16,16,23;30,31,298;29,39,20;26,36,9;48,53,52;38,38,271;31,38,33;45,44,201;35,43,102;8,14,1;15,23,8;43,48,36;42,45,86;32,42,147;29,35,23;46,45,26;48,55,100;19,28,64;24,31,11;33,36,73;24,26,22;25,33,12;38,44,67;16,23,9;33,39,134;15,12,30;40,47,51;41,50,35;25,37,5;23,32,41;36,40,40;27,24,22;17,16,54;18,37,33;32,38,59;30,44,24;37,45,32;36,43,131;28,31,119;26,31,131;34,45,23;35,36,87;42,49,165;36,38,119;22,22,11;43,40,23;18,35,3;44,47,47;40,38,89;24,34,26;30,43,29;47,49,51;38,48,9;30,35,19;39,50,9;29,37,3;43,49,120;45,50,89;30,38,25;42,48,31;36,50,15;43,51,33;25,35,31;20,17,3;35,38,25;19,18,5;8,18,1;38,50,17;18,26,3;42,50,133;8,16,1;41,52,22;26,32,20;29,32,76;43,39,30;18,17,4;45,47,75;36,51,5;19,26,17;32,36,18;17,9,15;51,53,7;23,34,24;42,47,26;35,39,59;22,30,31;48,56,7;41,46,52;18,16,1;41,51,30;37,47,10;11,16,1;31,28,28;32,37,32;28,32,33;24,35,16;36,48,28;46,50,210;19,30,4;19,27,25;51,54,9;26,33,12;47,56,4;41,47,28;45,54,5;26,25,16;18,19,6;42,46,31;18,28,20;29,40,12;36,42,118;23,33,25;21,15,3;38,46,1;41,48,26;17,27,8;19,32,18;34,43,17;46,48,69;47,48,35;46,49,22;43,50,108;35,49,12;31,45,14;49,51,29;16,29,4;44,49,124;35,41,49;33,44,23;35,47,7;23,18,3;17,31,3;31,44,37;16,27,3;46,54,23;32,39,45;18,30,14;29,34,15;35,45,14;31,37,25;25,31,19;39,48,7;40,49,13;38,47,1;31,36,8;43,47,10;47,55,38;32,45,8;37,34,1;45,49,78;24,29,1;35,48,7;46,53,2;37,51,1;19,34,17;19,15,2;41,49,50;38,45,29;34,42,53;33,43,15;46,55,12;23,22,11;29,43,4;34,44,35;18,33,3;19,35,2;36,33,1;40,37,2;36,46,3;22,34,1;35,46,4;18,25,2;30,42,1;44,48,29;44,51,2;33,46,2;50,50,1;28,44,1;34,38,2;42,53,1;34,47,1;45,51,5;40,52,2;36,47,1";
+
+</script>
+<style>
+  body{margin:0;font-family:Segoe UI,Tahoma,sans-serif}
+  #map{position:absolute;inset:0 520px 0 0}
+  #panel{position:absolute;top:0;right:0;bottom:0;width:520px;overflow:auto;padding:12px;box-sizing:border-box;background:#fff;border-left:1px solid #ddd;font-size:12.5px}
+  h3{margin:0 0 8px}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  td,th{padding:3px 3px;border-bottom:1px solid #eee;text-align:right}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-left:4px}
+  .hint{color:#666;font-size:12px;margin:6px 0}
+  button{margin:2px 0;padding:4px 8px}
+  .bv{width:10px;height:10px;background:#000;border:2px solid #fff;border-radius:50%}
+  #st{color:#b00;font-weight:600;min-height:18px}
+  .x{color:#b00;cursor:pointer;border:0;background:none;font-size:15px;padding:0 4px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h3>إعادة رسم نطاقات الفروع - إسكندرية</h3>
+  <div id="st">جاري حساب مسافات الشوارع…</div>
+  <label>أقصى إزاحة للحدود بين فرعين: <b id="sv">60</b>%</label>
+  <input id="s" type="range" min="0" max="95" step="5" value="60" style="width:100%">
+  <div class="hint">0% = كل نقطة لأقرب فرع بزمن الطريق. كل ما زاد، الحد ممكن يتحرك ناحية الفرع الأخف. الزرار يوزّع كل الفروع على السعات مرة واحدة؛ بعدها تغيير سعة فرع بيكبّر نطاقه فقط ويصغّر جيرانه بس.</div>
+  <button id="auto">وزّع كل الفروع تلقائيًا</button>
+  <br><label><input type="checkbox" id="pts" checked> أظهر المناطق (النقطة = منطقة، الحجم = الأوردرات)</label><br>
+  <label><input type="checkbox" id="bnd" checked> حدود زون إسكندرية (الحقيقية من DAS)</label>
+  <div>
+    <button id="add">+ فرع جديد</button>
+    <button id="gj">GeoJSON</button>
+    <button id="kml">KML</button>
+  </div>
+  <div class="hint"><b>طريقة الحساب:</b> الطلب من <b>85,657 أوردر فعلي</b> (7 أيام) على شبكة 300 م بإحداثيات العملاء. المسافات والأزمنة من شبكة الشوارع الحقيقية (OSRM) بالكباري والأنفاق والاتجاهات الواحدة، مش Manhattan. النطاق = كل خلية تروح للفرع الأسرع زمنًا بالطريق. دبابيس الفروع قابلة للسحب، وزرار ✕ يحذف فرع (جيرانه بس بياخدوا نطاقه).<br><b>الأرقام الحالية</b> (أوردر، DT، ≤15د، كم طريق) من الشيت الفعلي؛ «كم طريق حالي» = مسافة Google الفعلية (الداش بورد كان بيعرض Manhattan وهو أقل). <b>DT المقدّر</b> من منحنى فعلي: متوسط DT للأوردرات حسب مسافتها بالطريق، فهو متوسط مش ضمان لكل أوردر. الحساب بملف سيارات (مش موتوسيكل).</div>
+  <table id="t"></table>
+  <div class="hint" id="sum"></div>
+</div>
+<script>
+const COLORS=['#e6194b','#3cb44b','#4363d8','#f58231','#911eb4','#008080','#9a6324','#800000','#808000','#000075','#f032e6','#46f0f0'];
+const $=id=>document.getElementById(id),sleep=ms=>new Promise(r=>setTimeout(r,ms)),setStatus=t=>{$('st').textContent=t;};
+const OSRM='https://router.project-osrm.org';
+const A=1.5; // minutes of zone shift per ln(capacity)
+// current numbers from the real order sheet (85,657 orders, 7 days): o = orders/day, dt = mean DT min, p15 = % of orders <=15 min,
+// kg = mean real road km (Google). null = new branch. cap = relative capacity
+let branches=[
+ {n:'Montazah',lat:31.275817,lng:30.019304,o:786,dt:12.4,p15:75,kg:2.44,cap:1},
+ {n:'Miami - Arab Academy',lat:31.2656584,lng:29.9998413,o:1487,dt:12.7,p15:75,kg:1.69,cap:0.6},
+ {n:'El Seyouf',lat:31.2456494,lng:29.997143,o:1491,dt:14.2,p15:65,kg:2.57,cap:1},
+ {n:'Fleming - Koliyat Tarbya',lat:31.227582544984188,lng:29.95885417748716,o:2766,dt:16.1,p15:56,kg:1.91,cap:0.7},
+ {n:'Semouha',lat:31.2077709,lng:29.9679967,o:2877,dt:18.4,p15:45,kg:3.95,cap:2},
+ {n:'Ibrahimia',lat:31.21379680574841,lng:29.92527799764522,o:2764,dt:16.6,p15:51,kg:2.27,cap:1},
+ {n:"Semouha - Medan El Gama'a (NEW)",lat:31.20751409999999,lng:29.9368652,o:null,dt:null,p15:null,kg:null,cap:1},
+ {n:'Moharam Bek - Green (NEW)',lat:31.194300,lng:29.907178,o:null,dt:null,p15:null,kg:null,cap:1}
+];
+const lerpT=(arr,km)=>{const x=Math.min(20,Math.max(0,km/0.5-0.5)),i=Math.floor(x),f=x-i;return i>=20?arr[20]:arr[i]*(1-f)+arr[i+1]*f;};
+const estDT=km=>lerpT(DT_MEAN,km),estP15=km=>lerpT(DT_P15,km); // calibrated on the 85k real orders
+branches.forEach(b=>{b.bias=0;b.cap0=b.cap;});
+let boundary=[[31.20412,29.96779],[31.20348,29.97261],[31.20348,29.97893],[31.2019,29.97855],[31.20062,29.9819],[31.20348,29.98301],[31.20317,29.98932],[31.2038,29.98932],[31.2038,29.98115],[31.2092,29.9819],[31.21269,29.97299],[31.21428,29.97039],[31.22,29.97373],[31.21936,29.9793],[31.2219,29.98152],[31.22381,29.97744],[31.22476,29.9793],[31.22412,29.98338],[31.23555,29.97818],[31.2327,29.98932],[31.23301,29.99935],[31.23936,30.00826],[31.24254,30.00566],[31.24476,30.009],[31.24889,30.00529],[31.25206,30.009],[31.2473,30.01308],[31.25396,30.02385],[31.25523,30.02274],[31.25619,30.02422],[31.25968,30.02088],[31.26349,30.02831],[31.28443,30.04056],[31.293,30.03462],[31.28982,30.02385],[31.2838,30.02719],[31.28316,30.022],[31.28031,30.01568],[31.28126,30.01494],[31.28221,30.01049],[31.28094,30.00306],[31.27301,29.99526],[31.27079,29.98635],[31.25079,29.96556],[31.23111,29.93808],[31.22031,29.92657],[31.20158,29.89613],[31.21555,29.8861],[31.21079,29.87534],[31.20444,29.87088],[31.18284,29.8809],[31.17712,29.88944],[31.17236,29.89501],[31.1768,29.90504],[31.1714,29.90838],[31.17299,29.91284],[31.16028,29.93029],[31.16664,29.93697],[31.18919,29.92435],[31.19078,29.92954],[31.19618,29.93474],[31.20158,29.93697],[31.20285,29.94143],[31.20031,29.94662],[31.19967,29.95182],[31.19745,29.95331],[31.20094,29.95925],[31.2038,29.96593]]; // real Alexandria zone polygon (DAS city 200, zone 24)
+const inPoly=(pt,poly)=>{let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a[1]>pt.lng)!==(b[1]>pt.lng)&&pt.lat<(b[0]-a[0])*(pt.lng-a[1])/(b[1]-a[1])+a[0])c=!c;}return c;};
+const keyOf=b=>b.lat.toFixed(5)+','+b.lng.toFixed(5);
+
+// ---------- 300 m grid over the zone ----------
+const DLAT=0.0027,DLNG=0.00315,LAT0=31.155,LNG0=29.865;
+const G=[],GI={};
+(function(){const rows=Math.ceil((31.30-LAT0)/DLAT),cols=Math.ceil((30.05-LNG0)/DLNG);
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const lat=LAT0+r*DLAT,lng=LNG0+c*DLNG;
+    const pts=[[lat,lng],[lat+DLAT/2,lng+DLNG/2],[lat-DLAT/2,lng+DLNG/2],[lat+DLAT/2,lng-DLNG/2],[lat-DLAT/2,lng-DLNG/2]];
+    if(pts.some(p=>inPoly({lat:p[0],lng:p[1]},boundary))){GI[r*1000+c]=G.length;G.push({r,c,lat,lng,snap:undefined});}}})();
+const nG=G.length,DEST=G.map(p=>[p.lng,p.lat]);
+// real demand: orders/day per grid cell
+const DEM=[];let dropped=0;
+(function(){const acc={};CELLS.split(';').forEach(s=>{const [r,c,n]=s.split(',').map(Number);let gi=GI[r*1000+c];
+  if(gi===undefined){let bd=9;for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){const x=GI[(r+dr)*1000+c+dc];if(x!==undefined&&dr*dr+dc*dc<bd){bd=dr*dr+dc*dc;gi=x;}}}
+  if(gi===undefined){dropped+=n;return;}acc[gi]=(acc[gi]||0)+n;});
+  for(const gi in acc)DEM.push({gi:+gi,lat:G[gi].lat,lng:G[gi].lng,o:acc[gi]/CELLS_DAYS});})();
+
+// ---------- road matrix (OSRM), cached in localStorage ----------
+const LSK='alexroad_v3',SIG=nG+':'+DLAT+':grid-only';
+let R={},PP={};
+try{const c=JSON.parse(localStorage.getItem(LSK)||'{}');if(c.sig===SIG){for(const k in c.rows)R[k]={dur:Float32Array.from(c.rows[k].d),dis:Float32Array.from(c.rows[k].k)};(c.snap||[]).forEach((s,k)=>{if(G[k])G[k].snap=s;});}}catch(e){}
+function saveCache(){try{const rows={},live=new Set(branches.map(keyOf));for(const k of live)if(R[k])rows[k]={d:Array.from(R[k].dur,v=>+v.toFixed(2)),k:Array.from(R[k].dis,v=>+v.toFixed(2))};
+  localStorage.setItem(LSK,JSON.stringify({sig:SIG,rows,snap:G.map(g=>g.snap)}));}catch(e){}}
+async function getJSON(u){let err;for(let t=0;t<5;t++){try{const r=await fetch(u);if(r.status===429){await sleep(1500*(t+1));continue;}const j=await r.json();if(j.code==='Ok')return j;err=new Error(j.code||'osrm');}catch(e){err=e;await sleep(800);}}throw err;}
+async function fetchRows(bs){const nS=bs.length,chunk=100-nS,out=bs.map(()=>({dur:new Float32Array(DEST.length),dis:new Float32Array(DEST.length)}));
+  for(let s=0;s<DEST.length;s+=chunk){const ds=DEST.slice(s,s+chunk);
+    setStatus(`جاري حساب مسافات الشوارع… ${Math.round(100*s/DEST.length)}%`);
+    const coords=bs.map(b=>b.lng+','+b.lat).concat(ds.map(d=>d[0]+','+d[1])).join(';');
+    const j=await getJSON(`${OSRM}/table/v1/driving/${coords}?sources=${bs.map((_,i)=>i).join(';')}&destinations=${ds.map((_,k)=>nS+k).join(';')}&annotations=duration,distance`);
+    j.durations.forEach((row,i)=>row.forEach((v,k)=>{out[i].dur[s+k]=v==null?9999:v/60;const d=j.distances[i][k];out[i].dis[s+k]=d==null?9999:d/1000;}));
+    j.destinations.forEach((d,k)=>{if(s+k<nG&&G[s+k].snap===undefined)G[s+k].snap=d.distance;});
+    await sleep(150);}
+  bs.forEach((b,i)=>R[keyOf(b)]=out[i]);saveCache();}
+async function fetchPP(){const coords=branches.map(b=>b.lng+','+b.lat).join(';');
+  const j=await getJSON(`${OSRM}/table/v1/driving/${coords}?annotations=duration,distance`);
+  branches.forEach((a,i)=>branches.forEach((b,k)=>{PP[keyOf(a)+'|'+keyOf(b)]={d:j.durations[i][k]/60,k:j.distances[i][k]/1000};}));}
+async function ensure(){const miss=branches.filter(b=>!R[keyOf(b)]);
+  for(let i=0;i<miss.length;i+=8)await fetchRows(miss.slice(i,i+8));
+  await fetchPP();}
+
+// ---------- weights, assignment ----------
+const pairCap=(i,j)=>{const a=PP[keyOf(branches[i])+'|'+keyOf(branches[j])],b=PP[keyOf(branches[j])+'|'+keyOf(branches[i])];return Math.max(1,Math.min(a?a.d:30,b?b.d:30));};
+function project(w,K){const n=branches.length;
+  for(let s=0;s<60;s++){let moved=false;
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){const ex=Math.abs(w[i]-w[j])-K*pairCap(i,j);if(ex>1e-9){const sg=w[i]>w[j]?1:-1;w[i]-=sg*ex/2;w[j]+=sg*ex/2;moved=true;}}
+    if(!moved)break;}}
+function W(){const raw=branches.map(b=>(b.bias||0)+A*Math.log(b.cap/(b.cap0||b.cap))),w=raw.slice();
+  project(w,Math.min(0.95,+$('s').value/100));branches.forEach((b,i)=>b._lock=Math.abs(w[i]-raw[i])>1e-6);return w;}
+const Dm=()=>branches.map(b=>R[keyOf(b)].dur);
+function best(D,k,w){let bi=-1,bv=1e18;for(let i=0;i<D.length;i++){const v=D[i][k]-w[i];if(v<bv){bv=v;bi=i;}}return bi;}
+function countAreas(w){const D=Dm(),cnt=branches.map(()=>0);DEM.forEach(a=>{cnt[best(D,a.gi,w)]+=a.o;});return cnt;}
+function assignAll(w){const D=Dm(),gl=new Int16Array(nG),al=[],cnt=branches.map(()=>0);
+  for(let k=0;k<nG;k++)gl[k]=(G[k].snap!==undefined&&G[k].snap>350)?-1:best(D,k,w);
+  DEM.forEach(a=>{const i=best(D,a.gi,w);al.push(i);cnt[i]+=a.o;});
+  return {gl,al,cnt};}
+function rebalance(){const K=Math.min(0.95,+$('s').value/100)*0.7,n=branches.length,w=new Array(n).fill(0);
+  const tot=DEM.reduce((s,a)=>s+a.o,0),cs=branches.reduce((s,b)=>s+b.cap,0),tg=branches.map(b=>tot*b.cap/cs),mean=tot/n;
+  for(let it=0;it<400;it++){const cnt=countAreas(w);for(let i=0;i<n;i++)w[i]+=1.5*(tg[i]-cnt[i])/mean;project(w,K);}
+  branches.forEach((b,i)=>{b.bias=w[i];b.cap0=b.cap;});}
+const autoAll=()=>{branches.forEach(b=>{b.bias=0;b.cap0=b.cap;});rebalance();prev=null;};
+
+// ---------- zones from the grid ----------
+const BF=()=>turf.polygon([[...boundary.map(p=>[p[1],p[0]]),[boundary[0][1],boundary[0][0]]]]);
+function smooth(gl){const out=gl.slice(),pin=new Set();
+  branches.forEach(b=>{let bk=-1,bd=1e9;G.forEach((p,k)=>{const d=(p.lat-b.lat)**2+((p.lng-b.lng)*0.857)**2;if(d<bd){bd=d;bk=k;}});pin.add(bk);});
+  G.forEach((p,k)=>{if(gl[k]<0||pin.has(k))return;const nb=[GI[(p.r+1)*1000+p.c],GI[(p.r-1)*1000+p.c],GI[p.r*1000+p.c+1],GI[p.r*1000+p.c-1]].filter(x=>x!==undefined).map(x=>gl[x]);
+    const cnt={};nb.forEach(l=>{if(l>=0)cnt[l]=(cnt[l]||0)+1;});for(const l in cnt)if(+l!==gl[k]&&cnt[l]>=3)out[k]=+l;});
+  return out;}
+function buildZones(lab){const feats=[];
+  G.forEach((p,k)=>{if(lab[k]<0)return;const la=[LAT0+(p.r-.5)*DLAT,LAT0+(p.r+.5)*DLAT],lo=[LNG0+(p.c-.5)*DLNG,LNG0+(p.c+.5)*DLNG];
+    feats.push(turf.polygon([[[lo[0],la[0]],[lo[1],la[0]],[lo[1],la[1]],[lo[0],la[1]],[lo[0],la[0]]].map(q=>[+q[0].toFixed(6),+q[1].toFixed(6)])],{b:lab[k]}));});
+  let d;try{d=turf.dissolve(turf.featureCollection(feats),{propertyName:'b'});}catch(e){d=turf.featureCollection(feats);}
+  const bf=BF(),zones=branches.map(()=>[]);
+  d.features.forEach(f=>{let g=f;try{g=turf.intersect(f,bf);}catch(e){}if(!g)return;
+    try{g=turf.simplify(g,{tolerance:0.0004,highQuality:true});}catch(e){}
+    const b=f.properties.b;if(b===undefined||!zones[b])return;if(turf.area(g)<20000&&zones[b].length)return;g.properties={b};zones[b].push(g);});
+  return zones;}
+
+// ---------- drawing ----------
+const map=L.map('map').setView([31.235,29.96],12);
+const street=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri, HERE, Garmin, OpenStreetMap contributors'}).addTo(map);
+const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
+L.control.layers({'خريطة':street,'قمر صناعي':sat}).addTo(map);
+let layers=[],bmarks=[],adding=false,prev=null,inited=false,busy=false,again=false,zonesNow=[];
+function draw(){
+  layers.forEach(l=>map.removeLayer(l));layers=[];bmarks.forEach(m=>map.removeLayer(m));bmarks=[];
+  const w=W(),asg=assignAll(w),gl=asg.gl,al=asg.al,cnt=asg.cnt.map(Math.round),lab=smooth(gl),D=Dm();
+  const changedMsg=prev?branches.map((b,i)=>prev[b.n]!==undefined&&cnt[i]!==prev[b.n]?`${b.n} (${prev[b.n]}→${cnt[i]})`:null).filter(Boolean).join('، '):'';
+  prev={};branches.forEach((b,i)=>prev[b.n]=cnt[i]);
+  $('sv').textContent=$('s').value;
+  const zones=buildZones(lab);zonesNow=zones;
+  const per=branches.map(()=>({o:0,dt:0,ok:0,km:0,max:0}));
+  DEM.forEach((a,ai)=>{const i=al[ai],km=R[keyOf(branches[i])].dis[a.gi],dt=estDT(km),p=per[i];
+    p.o+=a.o;p.dt+=a.o*dt;p.km+=a.o*km;p.ok+=a.o*estP15(km);if(a.o>=3)p.max=Math.max(p.max,km);});
+  let rows='<tr><th>الفرع</th><th>أوردر/يوم<br>جديد</th><th>أوردر/يوم<br>حالي</th><th>DT مقدّر<br>جديد</th><th>DT<br>حالي</th><th>≤15د<br>جديد</th><th>≤15د<br>حالي</th><th>كم طريق<br>جديد</th><th>كم طريق<br>حالي</th><th>أبعد حي<br>كم</th><th>سعة</th><th></th></tr>';
+  let totDT=0,tot=0,tot15=0;
+  branches.forEach((b,i)=>{const col=COLORS[i%COLORS.length],p=per[i];
+    (zones[i]||[]).forEach(f=>layers.push(L.geoJSON(f,{style:{color:col,weight:3,fillColor:col,fillOpacity:.28}}).addTo(map).bindTooltip(b.n,{sticky:true})));
+    const m=L.marker([b.lat,b.lng],{draggable:true}).addTo(map).bindTooltip(b.n);
+    m.on('dragend',e=>{const q=e.target.getLatLng();b.lat=q.lat;b.lng=q.lng;refresh();});layers.push(m);
+    let inside=false;try{const pt=turf.point([b.lng,b.lat]);inside=(zones[i]||[]).some(f=>turf.booleanPointInPolygon(pt,f));}catch(e){inside=true;}
+    const warn=(!inPoly(b,boundary)?' ⚠ الدبوس خارج زون إسكندرية':'')+(!inside?' ⚠ الدبوس خارج نطاقه':'')+(b._lock?' <span title="وصل أقصى إزاحة للحدود، زوّد السلايدر عشان نطاقه يكبر أكتر">🔒</span>':'');
+    totDT+=p.dt;tot+=p.o;tot15+=p.ok;
+    rows+=`<tr><td><span class="dot" style="background:${col}"></span>${b.n}${warn}</td><td><b>${cnt[i]}</b></td><td>${b.o??'-'}</td><td>${p.o?(p.dt/p.o).toFixed(1):'-'}</td><td>${b.dt??'-'}</td><td>${p.o?Math.round(100*p.ok/p.o)+'%':'-'}</td><td>${b.p15!=null?b.p15+'%':'-'}</td><td>${p.o?(p.km/p.o).toFixed(1):'-'}</td><td>${b.kg??'-'}</td><td>${p.max?p.max.toFixed(1):'-'}</td><td><input type="number" min="0.1" step="0.1" value="${b.cap}" data-i="${i}" style="width:44px"></td><td><button class="x" data-i="${i}" title="حذف الفرع">✕</button></td></tr>`;});
+  $('t').innerHTML=rows;
+  document.querySelectorAll('#t input').forEach(inp=>inp.onchange=e=>{branches[+e.target.dataset.i].cap=Math.max(0.1,+e.target.value||1);draw();});
+  document.querySelectorAll('#t .x').forEach(btn=>btn.onclick=e=>{const i=+e.target.dataset.i;if(branches.length<2)return alert('لازم يفضل فرع واحد على الأقل');
+    if(confirm(`حذف فرع "${branches[i].n}"؟ جيرانه هياخدوا نطاقه.`)){branches.splice(i,1);refresh();}});
+  if($('pts').checked)DEM.forEach((a,ai)=>{const i=al[ai];layers.push(L.circleMarker([a.lat,a.lng],{radius:1.5+Math.sqrt(a.o)*0.55,color:'#222',weight:.5,fillColor:COLORS[i%COLORS.length],fillOpacity:.75}).addTo(map).bindTooltip(`${a.o.toFixed(0)} أوردر/يوم → ${branches[i].n} (${R[keyOf(branches[i])].dis[a.gi].toFixed(1)} كم، ${D[i][a.gi].toFixed(0)} د بالطريق)`));});
+  if($('bnd').checked){layers.push(L.polygon(boundary,{color:'#000',weight:2,fill:false,dashArray:'6 4'}).addTo(map));
+    boundary.forEach((p,k)=>{const m=L.marker(p,{draggable:true,icon:L.divIcon({className:'',html:'<div class="bv"></div>',iconSize:[10,10]})}).addTo(map);
+      m.on('dragend',e=>{const q=e.target.getLatLng();boundary[k]=[q.lat,q.lng];draw();});bmarks.push(m);});}
+  // neighbouring branches (zones touching on the grid) and the real road distance between their pins
+  const pairs=new Set();G.forEach((p,k)=>{const L1=lab[k];if(L1<0)return;[GI[(p.r+1)*1000+p.c],GI[p.r*1000+p.c+1]].forEach(x=>{if(x!==undefined&&lab[x]>=0&&lab[x]!==L1)pairs.add(Math.min(L1,lab[x])+'-'+Math.max(L1,lab[x]));});});
+  const pl=[...pairs].map(s=>{const [i,j]=s.split('-').map(Number),pp=PP[keyOf(branches[i])+'|'+keyOf(branches[j])];return pp?[pp.k,pp.d,branches[i].n,branches[j].n]:null;}).filter(Boolean).sort((a,b)=>a[0]-b[0]);
+  const outO=DEM.filter(a=>!inPoly(a,boundary)).reduce((s,a)=>s+a.o,0);
+  $('sum').innerHTML=(changedMsg?`آخر تعديل غيّر الأوردرات في: <b>${changedMsg}</b> فقط، والباقي لم يتغير.<br>`:'')+
+   `إجمالي مقدّر: <b>${tot}</b> أوردر/يوم، متوسط DT مقدّر <b>${(totDT/tot).toFixed(1)}</b> د، <b>${Math.round(100*tot15/tot)}%</b> من الأوردرات ≤ 15 د (الحالي حسب الداش بورد: 16.2 د و 55% أقل من 15).<br><br>`+
+   `<b>المسافة بين كل فرعين متجاورين</b> (بالطريق بين الدبوسين، من الأقرب للأبعد):<br>${pl.map(p=>`${p[0].toFixed(1)} كم (${p[1].toFixed(0)} د): ${p[2]} ↔ ${p[3]}`).join('<br>')}<br><br>`+
+   `أوردرات في خلايا خارج حدود زون إسكندرية: <b>${outO.toFixed(0)}</b> أوردر/يوم (محسوبة على أقرب فرع)${dropped?`، وأوردرات بعيدة عن الشبكة لم تُحسب: ${dropped} في الأسبوع`:''}.`;
+}
+async function refresh(){if(busy){again=true;return;}busy=true;
+  try{do{again=false;setStatus('جاري حساب مسافات الشوارع…');await ensure();if(!inited){autoAll();inited=true;}draw();}while(again);setStatus('');}
+  catch(e){setStatus('تعذّر الاتصال بخدمة حساب الشوارع (OSRM): '+(e&&e.message||e)+' — تأكد من الإنترنت وحدّث الصفحة.');}
+  busy=false;}
+
+// ---------- export ----------
+function geo(){return {type:'FeatureCollection',features:branches.map((b,i)=>({type:'Feature',properties:{branch:b.n,lat:b.lat,lng:b.lng},
+  geometry:{type:'MultiPolygon',coordinates:(zonesNow[i]||[]).flatMap(f=>f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates)}}))};}
+function save(name,text){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text]));a.download=name;a.click();}
+$('gj').onclick=()=>save('alex_zones.geojson',JSON.stringify(geo(),null,1));
+$('kml').onclick=()=>{const f=geo().features.map(x=>x.geometry.coordinates.map(poly=>`<Placemark><name>${x.properties.branch}</name><Polygon><outerBoundaryIs><LinearRing><coordinates>${poly[0].map(c=>c[0]+','+c[1]+',0').join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`).join('')).join('');
+  save('alex_zones.kml',`<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>${f}</Document></kml>`);};
+['pts','bnd'].forEach(id=>$(id).oninput=()=>draw());
+$('s').oninput=()=>draw();
+$('auto').onclick=()=>{autoAll();draw();};
+$('add').onclick=()=>{adding=true;alert('اضغط على الخريطة مكان الفرع الجديد');};
+map.on('click',e=>{if(!adding)return;adding=false;let k=1;while(branches.some(b=>b.n==='New branch '+k))k++;
+  branches.push({n:'New branch '+k,lat:e.latlng.lat,lng:e.latlng.lng,o:null,dt:null,km:null,cap:1,bias:0,cap0:1});refresh();});
+refresh();
+</script>
+</body>
+</html>
